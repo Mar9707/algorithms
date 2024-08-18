@@ -1,5 +1,6 @@
 #include <iostream>
 #include "image.h"
+#include "decompress.cpp"
 
 
 
@@ -124,6 +125,23 @@ std::vector<std::pair<int, int>> JPEG::encodeAC(const std::vector<int>& zigzagCo
 }
 
 
+void JPEG::saveCompressedImage(const std::string& filename, const std::vector<std::pair<int, int>>& encodedAC) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Unable to create or open file " << filename << std::endl;
+        return;
+    }
+
+    for (const auto& pair : encodedAC) {
+        file << pair.first << " " << pair.second << std::endl;
+    }
+
+    file.close();
+
+    std::cout << "Compressed image saved as: " << filename << std::endl;
+}
+
+
 void JPEG::JPEGdata(std::vector<std::vector<int>>& img, std::vector<std::pair<int, int>>& encodedAC){
    std::vector<std::vector<int>> imgYCbCr = img;
    convertRGBtoYCbCr(imgYCbCr);
@@ -141,7 +159,117 @@ void JPEG::JPEGdata(std::vector<std::vector<int>>& img, std::vector<std::pair<in
 
 
 
-JPEG::JPEG(std::vector<std::vector<int>>& img) : DCTCoefficients(img.size()), quantizedCoefficients(img.size()) {
+JPEG::JPEG(std::vector<std::vector<int>>& img, std::string& filename) : DCTCoefficients(img.size()), quantizedCoefficients(img.size()) {
    JPEGdata(img, encodedAC);
+   saveCompressedImage(filename, getEncodedAC());
+
 }  
 
+
+std::vector<std::pair<int, int>> JPEG::getEncodedAC() const {
+    return encodedAC;
+}
+
+
+
+/*ImageSize readJpegImageSize(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+
+    if (!file.is_open()) {
+        std::cerr << "Error: Unable to open file " << filename << std::endl;
+        return {0, 0};
+    }
+
+    unsigned short segmentSize;
+    unsigned char marker;
+    unsigned char segment;
+
+    while (file.read(reinterpret_cast<char*>(&marker), sizeof(marker))) {
+        std::cout << "Marker: " << std::hex << +marker << std::endl;
+
+        if (marker != 0xFF) {
+            continue;
+        }
+
+        file.read(reinterpret_cast<char*>(&segment), sizeof(segment));
+        std::cout << "Segment: " << std::hex << +segment << std::endl;
+
+        if (segment == 0xC0) {
+            file.read(reinterpret_cast<char*>(&segmentSize), sizeof(segmentSize));
+            segmentSize = (segmentSize << 8) | (segmentSize >> 8); 
+            int height, width;
+            file.read(reinterpret_cast<char*>(&height), sizeof(height));
+            file.read(reinterpret_cast<char*>(&width), sizeof(width));
+            return {width, height};
+        } else {
+            file.read(reinterpret_cast<char*>(&segmentSize), sizeof(segmentSize));
+            segmentSize = (segmentSize << 8) | (segmentSize >> 8); 
+            std::cout << "Segment size: " << std::hex << segmentSize << std::endl;
+            file.seekg(segmentSize - 2, std::ios_base::cur);
+        }
+    }
+
+    std::cerr << "Error: SOF0 segment not found" << std::endl;
+    return {0, 0};
+}
+*/
+     
+
+
+std::vector<std::vector<int>> read (const std::string& filename){
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::invalid_argument("Error");
+    }
+
+    std::vector<std::vector<int>> img;
+    int width = 2048;
+    int height = 1266;
+
+     if (width <= 0 || height <= 0) {
+        throw std::invalid_argument("Invalid image dimensions");
+    }
+
+     img.resize(height, std::vector<int>(width * 3));
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width * 3; ++x) {
+            unsigned char pixelValue;
+            file.read(reinterpret_cast<char*>(&pixelValue), sizeof(unsigned char));
+            img[y][x] = pixelValue;
+
+        }
+    }
+
+    file.close();
+
+    return img;
+}
+
+
+
+int main() {
+    std::string image;
+    std::cout << "Enter the image filename: ";
+    std::cin >> image;
+    std::string compressedImageFilename = "compressed_" + image;
+
+    try {
+        std::vector<std::vector<int>> img = read(image);
+        std::cout << "Image read successfully!" << std::endl;
+
+        JPEG imageJpeg(img, compressedImageFilename);
+        std::cout << "Image compressed successfully!" << std::endl;
+
+        std::vector<std::vector<int>> decompressedImg = imageJpeg.decompressImage(compressedImageFilename);
+        std::cout << "Image decompressed successfully!" << std::endl;
+
+        std::string decompressedFilename = "decompressed_" + image ;
+        saveImageToJPEG(decompressedFilename, decompressedImg);
+        std::cout << "Decompressed image saved as " << decompressedFilename << std::endl;
+
+    } catch (const std::invalid_argument& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+
+    return 0;
+}
